@@ -1,0 +1,51 @@
+{
+  "family": "instagram-leads-prod",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "1024",
+  "memory": "2048",
+  "executionRoleArn": "arn:aws:iam::YOUR_AWS_ACCOUNT_ID:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::YOUR_AWS_ACCOUNT_ID:role/instagram-leads-ecs-task",
+  "containerDefinitions": [
+    {
+      "name": "instagram-leads",
+      "image": "YOUR_AWS_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/instagram-leads-api:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8501,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        { "name": "PORT", "value": "8501" },
+        { "name": "WORKBOOK_STORAGE", "value": "s3" },
+        { "name": "S3_BUCKET", "value": "YOUR_S3_BUCKET" },
+        { "name": "S3_PREFIX", "value": "prod" },
+        { "name": "AWS_DEFAULT_REGION", "value": "us-east-1" },
+        { "name": "LOG_LEVEL", "value": "INFO" },
+        { "name": "PROCESS_CHUNK_SIZE", "value": "25" },
+        { "name": "MAX_SCREENSHOTS_PER_REQUEST", "value": "50" },
+        { "name": "GEMINI_CONCURRENCY", "value": "6" },
+        { "name": "GEMINI_MAX_RETRIES", "value": "2" },
+        { "name": "GEMINI_RETRY_BACKOFF_S", "value": "1.5" },
+        { "name": "GEMINI_TIMEOUT_S", "value": "25" },
+        { "name": "GEMINI_DISCOVER_MODELS", "value": "false" }
+      ],
+      "secrets": [
+        {
+          "name": "GEMINI_API_KEY",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:YOUR_AWS_ACCOUNT_ID:secret:YOUR_GEMINI_SECRET_NAME"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/instagram-leads-prod",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}
