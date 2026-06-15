@@ -1,0 +1,26 @@
+---
+description: Keep KNOWLEDGE.md updated when features are completed
+alwaysApply: true
+---
+
+# Maintain KNOWLEDGE.md
+
+The file `KNOWLEDGE.md` at the project root is the shared living knowledge base.
+
+When you complete a feature, fix a significant bug, or make a notable
+implementation decision, you MUST update `KNOWLEDGE.md` in the same change:
+
+1. Add a dated entry under **Feature Log** (newest on top) with:
+   - **Summary** — what the feature/change does
+   - **Changes made** — specific files and functions modified
+   - **Scope changes** — anything added/removed from original scope
+   - **Implementation notes & decisions** — trade-offs, gotchas, why this approach
+2. Update **Key Decisions** when a durable architectural choice is made.
+3. Update **Known Issues / TODO** when relevant.
+
+Rules:
+
+- Keep entries concise and skimmable.
+- Do not duplicate existing entries; extend them if the work is related.
+- `KNOWLEDGE.md` is tracked in git — commit it alongside related code changes.
+- Only update for meaningful changes, not trivial edits (typos, formatting-only).
