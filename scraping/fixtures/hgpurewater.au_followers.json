@@ -1,0 +1,93 @@
+[
+  {
+    "type": "user",
+    "isAvailable": true,
+    "id": "36490430473",
+    "username": "hgpurewater.au",
+    "fullName": "HG PureWater",
+    "isPrivate": false,
+    "isVerified": false,
+    "biography": "💙 RO • Whole House • Water Softeners\n📍 Australia\n🔗 Claim Your FREE TDS Pen ⬇️\n📌 10% EOFY Offer Available"
+  },
+  {
+    "type": "user",
+    "isAvailable": true,
+    "id": "6855471378",
+    "username": "hdplumbingandgas",
+    "fullName": "HD Plumbing and Gas",
+    "isPrivate": false,
+    "isVerified": false
+  },
+  {
+    "type": "user",
+    "isAvailable": true,
+    "id": "54826507341",
+    "username": "aboveallgasandplumbing",
+    "fullName": "Above All Gas And Plumbing",
+    "isPrivate": false,
+    "isVerified": false
+  },
+  {
+    "type": "user",
+    "isAvailable": true,
+    "id": "23528823531",
+    "username": "watersolveplumbing",
+    "fullName": "WaterSolve Plumbing Solutions | Sunshine Coast, QLD",
+    "isPrivate": false,
+    "isVerified": false
+  },
+  {
+    "type": "user",
+    "isAvailable": true,
+    "id": "79619086864",
+    "username": "browns_plumbingco",
+    "fullName": "Tyson brown",
+    "isPrivate": false,
+    "isVerified": false
+  },
+  {
+    "type": "user",
+    "isAvailable": true,
+    "id": "63974150448",
+    "username": "r.dem92",
+    "fullName": "Reg Dee",
+    "isPrivate": false,
+    "isVerified": false
+  },
+  {
+    "type": "user",
+    "isAvailable": true,
+    "id": "4647679752",
+    "username": "sps.plumbing.roofing",
+    "fullName": "SPS - Sydney Plumber & Roofer",
+    "isPrivate": false,
+    "isVerified": false
+  },
+  {
+    "type": "user",
+    "isAvailable": true,
+    "id": "58024675221",
+    "username": "samios_launceston",
+    "fullName": "Samios Plumbing Supplies Launceston",
+    "isPrivate": false,
+    "isVerified": false
+  },
+  {
+    "type": "user",
+    "isAvailable": true,
+    "id": "17412625538",
+    "username": "blackwellplumbingandgas",
+    "fullName": "Blackwell Plumbing and Gas",
+    "isPrivate": false,
+    "isVerified": false
+  },
+  {
+    "type": "user",
+    "isAvailable": true,
+    "id": "46163517756",
+    "username": "pwd_plumbing",
+    "fullName": "PWD Plumbing Pty Ltd",
+    "isPrivate": false,
+    "isVerified": true
+  }
+]

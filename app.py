@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import threading
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -44,11 +45,16 @@ from processor import (
     staged_rows_to_new_workbook_bytes,
 )
 from logging_config import get_logger, log_fields, request_id_var, setup_logging
+from scraping import PipelineSettings, load_settings, parse_seed_handles, run_pipeline
 from workbook_storage import get_workbook_storage, normalize_api_key
 
 logger = get_logger("api")
 
 PENDING_RESULTS: dict[str, dict[str, object]] = {}
+
+URL_JOBS: dict[str, dict[str, Any]] = {}
+URL_JOBS_LOCK = threading.Lock()
+MAX_URL_JOBS = 20
 
 
 def _duplicate_workbooks_cache_key(names: list[str]) -> str:
@@ -881,6 +887,189 @@ async def save_to_existing(
 async def cancel_results(token: str = Form(...)) -> JSONResponse:
     PENDING_RESULTS.pop(token, None)
     return JSONResponse({"ok": True, "message": "Pending results cancelled."})
+
+
+def _prune_url_jobs() -> None:
+    if len(URL_JOBS) <= MAX_URL_JOBS:
+        return
+    finished = sorted(
+        (j for j in URL_JOBS.values() if j.get("status") != "running"),
+        key=lambda j: j.get("created_at", 0.0),
+    )
+    for job in finished[: max(0, len(URL_JOBS) - MAX_URL_JOBS)]:
+        URL_JOBS.pop(job["id"], None)
+
+
+def _job_public_view(job: dict[str, Any]) -> dict[str, Any]:
+    return {k: v for k, v in job.items() if k != "cancel"}
+
+
+def _display_rows(leads: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for item in leads:
+        lead = item.get("lead") or {}
+        rows.append(
+            {
+                "status": item.get("status", "new"),
+                "Business Name": lead.get("Business Name", ""),
+                "Mobile": lead.get("Mobile", ""),
+                "Email": lead.get("Email", ""),
+                "Instagram": lead.get("Instagram", ""),
+                "Source URL": lead.get("Source URL", ""),
+                "Duplicate Source File": item.get("duplicate_source_file", ""),
+                "Duplicate Source Row": item.get("duplicate_source_row"),
+            }
+        )
+    return rows
+
+
+def _run_url_job(
+    job_id: str,
+    handles: list[str],
+    master_sources: list[tuple[str, bytes]],
+    settings: PipelineSettings,
+) -> None:
+    job = URL_JOBS.get(job_id)
+    if job is None:
+        return
+    cancel_event: threading.Event = job["cancel"]
+
+    def progress(stage: str, message: str, done: int, total: int) -> None:
+        with URL_JOBS_LOCK:
+            job["stage"] = stage
+            job["message"] = message
+            job["progress"] = {"done": done, "total": total}
+
+    try:
+        result = run_pipeline(
+            handles,
+            settings=settings,
+            master_sources=master_sources,
+            progress=progress,
+            should_cancel=cancel_event.is_set,
+        )
+    except Exception as exc:
+        logger.exception("url_job_failed %s", log_fields(job_id=job_id))
+        with URL_JOBS_LOCK:
+            job["status"] = "error"
+            job["error"] = str(exc)
+        return
+
+    if cancel_event.is_set():
+        with URL_JOBS_LOCK:
+            job["status"] = "cancelled"
+            job["message"] = "Cancelled."
+        return
+
+    token = uuid.uuid4().hex
+    PENDING_RESULTS[token] = {
+        "new_rows": result.save_rows(),
+        "duplicate_rows": [],
+    }
+
+    logger.info(
+        "url_job_succeeded %s",
+        log_fields(job_id=job_id, token=token, **result.stats.as_dict()),
+    )
+
+    with URL_JOBS_LOCK:
+        job["status"] = "done"
+        job["token"] = token
+        job["stats"] = result.stats.as_dict()
+        job["rows"] = _display_rows(result.leads)
+        job["errors"] = result.errors[:20]
+        job["message"] = "Done."
+
+
+@app.get("/api/url-pipeline-status")
+async def url_pipeline_status() -> JSONResponse:
+    settings = load_settings()
+    return JSONResponse(
+        {
+            "enabled": settings.enabled,
+            "missing": settings.missing_credentials(),
+            "max_seed_urls": settings.max_seed_urls,
+            "max_followers_per_url": settings.max_followers_per_url,
+        }
+    )
+
+
+@app.post("/api/url-jobs/start")
+async def url_job_start(
+    urls: str = Form(...),
+    duplicate_workbooks: str = Form(""),
+) -> JSONResponse:
+    settings = load_settings()
+    if not settings.enabled:
+        raise HTTPException(
+            status_code=503,
+            detail="URL pipeline is not configured. Missing: "
+            + ", ".join(settings.missing_credentials()),
+        )
+
+    handles, invalid = parse_seed_handles(urls, max_count=settings.max_seed_urls)
+    if not handles:
+        raise HTTPException(
+            status_code=400,
+            detail="No valid Instagram URLs or @handles were provided.",
+        )
+
+    names = _parse_master_workbook_names(duplicate_workbooks)
+    master_sources = _master_workbook_sources(names)
+
+    job_id = uuid.uuid4().hex
+    with URL_JOBS_LOCK:
+        _prune_url_jobs()
+        URL_JOBS[job_id] = {
+            "id": job_id,
+            "status": "running",
+            "stage": "queued",
+            "message": "Starting…",
+            "progress": {"done": 0, "total": len(handles)},
+            "stats": {},
+            "rows": [],
+            "token": None,
+            "error": None,
+            "invalid_inputs": invalid,
+            "errors": [],
+            "created_at": time.time(),
+            "cancel": threading.Event(),
+        }
+
+    threading.Thread(
+        target=_run_url_job,
+        args=(job_id, handles, master_sources, settings),
+        daemon=True,
+    ).start()
+
+    logger.info(
+        "url_job_started %s",
+        log_fields(job_id=job_id, seeds=len(handles), invalid=len(invalid)),
+    )
+    return JSONResponse(
+        {"job_id": job_id, "seed_count": len(handles), "invalid_inputs": invalid}
+    )
+
+
+@app.get("/api/url-jobs/{job_id}")
+async def url_job_status(job_id: str) -> JSONResponse:
+    with URL_JOBS_LOCK:
+        job = URL_JOBS.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Job not found or expired.")
+        return JSONResponse(_job_public_view(job))
+
+
+@app.post("/api/url-jobs/{job_id}/cancel")
+async def url_job_cancel(job_id: str) -> JSONResponse:
+    with URL_JOBS_LOCK:
+        job = URL_JOBS.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Job not found.")
+        job["cancel"].set()
+        if job.get("status") == "running":
+            job["message"] = "Cancelling…"
+    return JSONResponse({"ok": True})
 
 
 @app.get("/health")

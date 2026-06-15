@@ -66,6 +66,7 @@ const exportNameConfirm = document.getElementById("exportNameConfirm");
 
 const pageAi = document.getElementById("pageAi");
 const pageFolders = document.getElementById("pageFolders");
+const pageUrls = document.getElementById("pageUrls");
 const sidebarLinks = document.querySelectorAll(".sidebar-link");
 const foldersRefresh = document.getElementById("foldersRefresh");
 const foldersScanRoot = document.getElementById("foldersScanRoot");
@@ -138,10 +139,18 @@ async function compressScreenshotForUpload(file) {
   }
 }
 
+// Compress in small parallel groups: faster than one-by-one without freezing the
+// tab by decoding every image at once. Output order matches input order.
+const PREPARE_COMPRESS_CONCURRENCY = 6;
+
 async function prepareScreenshotsForUpload(files) {
-  const prepared = [];
-  for (const file of files) {
-    prepared.push(await compressScreenshotForUpload(file));
+  const prepared = new Array(files.length);
+  for (let start = 0; start < files.length; start += PREPARE_COMPRESS_CONCURRENCY) {
+    const slice = files.slice(start, start + PREPARE_COMPRESS_CONCURRENCY);
+    const results = await Promise.all(slice.map((file) => compressScreenshotForUpload(file)));
+    results.forEach((file, offset) => {
+      prepared[start + offset] = file;
+    });
   }
   return prepared;
 }
@@ -577,9 +586,11 @@ async function uploadCodebaseWorkbook(file, folderId) {
 function setAppPage(pageId) {
   const isAi = pageId === "ai";
   const isFolders = pageId === "folders";
-  if (!isAi && !isFolders) return;
+  const isUrls = pageId === "urls";
+  if (!isAi && !isFolders && !isUrls) return;
   pageAi.classList.toggle("hidden", !isAi);
   pageFolders.classList.toggle("hidden", !isFolders);
+  if (pageUrls) pageUrls.classList.toggle("hidden", !isUrls);
   sidebarLinks.forEach((btn) => {
     const active = btn.dataset.page === pageId;
     btn.classList.toggle("is-active", active);
@@ -588,6 +599,9 @@ function setAppPage(pageId) {
   });
   if (isFolders && !foldersIndexLoaded) {
     void loadFoldersIndex();
+  }
+  if (isUrls) {
+    document.dispatchEvent(new CustomEvent("urls:show"));
   }
 }
 

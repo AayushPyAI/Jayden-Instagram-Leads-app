@@ -151,3 +151,84 @@ Rules:
 - If email is unclear, email must be "".
 - Australian mobiles often appear as 04XX XXX XXX or +61 4XX XXX XXX. When visible, include the leading 0 in mobile (10 digits after the 0, e.g. 0412345678). Do not drop the leading 0.
 - Output JSON only, no markdown."""
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# URL Lead Pipeline (Apify followers → RapidAPI profile → filter → leads)
+# ──────────────────────────────────────────────────────────────────────────
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = (os.getenv(name) or "").strip().lower()
+    if not raw:
+        return default
+    return raw in {"1", "true", "yes", "on"}
+
+
+def _env_int(name: str, default: int, *, minimum: int = 1) -> int:
+    try:
+        return max(minimum, int(os.getenv(name, str(default))))
+    except (TypeError, ValueError):
+        return default
+
+
+def _env_float(name: str, default: float, *, minimum: float = 0.0) -> float:
+    try:
+        return max(minimum, float(os.getenv(name, str(default))))
+    except (TypeError, ValueError):
+        return default
+
+
+APIFY_TOKEN = (os.getenv("APIFY_TOKEN") or "").strip()
+APIFY_FOLLOWERS_ACTOR_ID = (os.getenv("APIFY_FOLLOWERS_ACTOR_ID") or "lezdhAFfa4H5zAb2A").strip()
+RAPIDAPI_KEY = (os.getenv("RAPIDAPI_KEY") or "").strip()
+RAPIDAPI_HOST = (os.getenv("RAPIDAPI_HOST") or "instagram120.p.rapidapi.com").strip()
+
+# The exact profile endpoint differs per RapidAPI listing; copy these from the
+# playground's code snippet if the defaults do not match.
+RAPIDAPI_PROFILE_PATH = (os.getenv("RAPIDAPI_PROFILE_PATH") or "api/instagram/userInfoByUsername").strip().lstrip("/")
+RAPIDAPI_PROFILE_METHOD = (os.getenv("RAPIDAPI_PROFILE_METHOD") or "POST").strip().upper()
+RAPIDAPI_USERNAME_PARAM = (os.getenv("RAPIDAPI_USERNAME_PARAM") or "username").strip()
+
+URL_PIPELINE_MAX_SEED_URLS = _env_int("URL_PIPELINE_MAX_SEED_URLS", 20)
+APIFY_MAX_FOLLOWERS_PER_URL = _env_int("APIFY_MAX_FOLLOWERS_PER_URL", 400)
+URL_PIPELINE_CONCURRENCY = _env_int("URL_PIPELINE_CONCURRENCY", 5)
+RAPIDAPI_DAILY_CALL_CAP = _env_int("RAPIDAPI_DAILY_CALL_CAP", 8000)
+RAPIDAPI_TIMEOUT_S = _env_int("RAPIDAPI_TIMEOUT_S", 25, minimum=5)
+RAPIDAPI_MAX_RETRIES = _env_int("RAPIDAPI_MAX_RETRIES", 2)
+RAPIDAPI_RETRY_BACKOFF_S = _env_float("RAPIDAPI_RETRY_BACKOFF_S", 1.5, minimum=0.1)
+APIFY_TIMEOUT_S = _env_int("APIFY_TIMEOUT_S", 120, minimum=10)
+SKIP_PRIVATE_ACCOUNTS = _env_bool("SKIP_PRIVATE_ACCOUNTS", True)
+APIFY_DEMO_FALLBACK = _env_bool("APIFY_DEMO_FALLBACK", True)
+
+
+def url_pipeline_settings() -> dict[str, object]:
+    """Snapshot of pipeline settings (no secrets) for diagnostics / logging."""
+    return {
+        "apify_actor_id": APIFY_FOLLOWERS_ACTOR_ID,
+        "rapidapi_host": RAPIDAPI_HOST,
+        "max_seed_urls": URL_PIPELINE_MAX_SEED_URLS,
+        "max_followers_per_url": APIFY_MAX_FOLLOWERS_PER_URL,
+        "concurrency": URL_PIPELINE_CONCURRENCY,
+        "rapidapi_daily_call_cap": RAPIDAPI_DAILY_CALL_CAP,
+        "rapidapi_timeout_s": RAPIDAPI_TIMEOUT_S,
+        "rapidapi_max_retries": RAPIDAPI_MAX_RETRIES,
+        "apify_timeout_s": APIFY_TIMEOUT_S,
+        "skip_private_accounts": SKIP_PRIVATE_ACCOUNTS,
+        "apify_demo_fallback": APIFY_DEMO_FALLBACK,
+    }
+
+
+def url_pipeline_credentials_status() -> dict[str, bool]:
+    """Whether each required credential is present (booleans only, never the value)."""
+    return {
+        "apify_token_set": bool(APIFY_TOKEN),
+        "apify_actor_id_set": bool(APIFY_FOLLOWERS_ACTOR_ID),
+        "rapidapi_key_set": bool(RAPIDAPI_KEY),
+        "rapidapi_host_set": bool(RAPIDAPI_HOST),
+    }
+
+
+def url_pipeline_enabled() -> bool:
+    """True only when all credentials needed to run the pipeline are present."""
+    return all(url_pipeline_credentials_status().values())

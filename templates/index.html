@@ -19,6 +19,7 @@
           <button type="button" class="sidebar-link is-active" data-page="ai" aria-current="page">
             AI Processing
           </button>
+          <button type="button" class="sidebar-link" data-page="urls">URL Pipeline</button>
           <button type="button" class="sidebar-link" data-page="folders">Folders</button>
         </nav>
       </aside>
@@ -253,6 +254,117 @@
             <div id="foldersGroups" class="folders-groups"></div>
           </main>
         </div>
+
+        <div id="pageUrls" class="page-panel hidden" data-page-panel="urls">
+          <main class="container">
+            <header class="hero">
+              <h1>URL Lead Pipeline</h1>
+              <p>
+                Paste Instagram profile URLs. The app pulls each profile's followers, keeps only business
+                accounts that have a phone number and no website link, drops anyone already in your MASTER
+                workbooks, and returns ready-to-call leads.
+              </p>
+            </header>
+
+            <section class="card">
+              <p id="urlPipelineDisabled" class="error hidden"></p>
+
+              <div class="field">
+                <label for="urlDupCheckList">Duplicate check workbooks</label>
+                <div id="urlDupCheckList" class="url-checkbox-list"></div>
+                <p class="muted field-hint">
+                  New leads are compared against the ticked MASTER workbooks so the same business is never
+                  contacted twice. All are used by default.
+                </p>
+              </div>
+
+              <div class="field">
+                <label for="urlSeedInput">Instagram profile URLs</label>
+                <textarea
+                  id="urlSeedInput"
+                  class="url-seed-input"
+                  rows="6"
+                  spellcheck="false"
+                  placeholder="https://www.instagram.com/example/&#10;https://www.instagram.com/another_profile/"
+                ></textarea>
+                <p class="muted field-hint">
+                  One URL per line (spaces or commas also work). Up to
+                  <span id="urlMaxSeeds">20</span> per run.
+                </p>
+              </div>
+
+              <div class="url-actions">
+                <button type="button" id="urlRunBtn" class="btn-primary">Generate leads</button>
+                <button type="button" id="urlCancelBtn" class="btn-secondary hidden">Cancel</button>
+              </div>
+              <p id="urlError" class="error hidden"></p>
+            </section>
+
+            <section id="urlProgressCard" class="card hidden">
+              <div class="url-progress">
+                <div class="spinner"></div>
+                <div class="url-progress-body">
+                  <p id="urlProgressMsg" class="url-progress-msg">Starting…</p>
+                  <div class="loading-progress-track">
+                    <div id="urlProgressBar" class="loading-progress-bar"></div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section id="urlResultSection" class="hidden">
+              <div class="stats-row">
+                <div class="stat"><span>New</span><strong id="urlNewCount">0</strong></div>
+                <div class="stat"><span>Duplicates</span><strong id="urlDupCount">0</strong></div>
+                <div class="stat"><span>Checked</span><strong id="urlCheckedCount">0</strong></div>
+                <div class="stat"><span>Followers</span><strong id="urlFollowerCount">0</strong></div>
+              </div>
+
+              <div class="card results-data-card">
+                <div class="results-data-head">
+                  <div class="results-data-title-block">
+                    <h2 class="results-data-title">Generated Leads</h2>
+                    <p id="urlResultSummary" class="table-summary muted">No leads yet</p>
+                  </div>
+                  <div class="results-copy-actions" role="group" aria-label="Copy leads">
+                    <button type="button" id="urlCopyNewBtn" class="copy-leads-btn copy-leads-btn--new" disabled>
+                      <span class="copy-leads-btn-label">Copy New Leads</span>
+                    </button>
+                    <button type="button" id="urlCopyAllBtn" class="copy-leads-btn copy-leads-btn--all" disabled>
+                      <span class="copy-leads-btn-label">Copy All</span>
+                    </button>
+                  </div>
+                  <p id="urlCopyFeedback" class="copy-feedback muted hidden" role="status"></p>
+                </div>
+                <div class="results-table-wrap">
+                  <table id="urlResultTable" class="results-table">
+                    <thead>
+                      <tr>
+                        <th scope="col" class="col-status">Status</th>
+                        <th scope="col">Business Name</th>
+                        <th scope="col">Mobile</th>
+                        <th scope="col">Email</th>
+                        <th scope="col">Instagram</th>
+                        <th scope="col">Source</th>
+                      </tr>
+                    </thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div class="save-actions">
+                <div class="save-actions-row url-save-row">
+                  <label class="url-save-label" for="urlSaveTarget">Save new leads to MASTER workbook</label>
+                  <select id="urlSaveTarget" class="url-save-select"></select>
+                  <button type="button" id="urlSaveExistingBtn" class="btn-primary">Append to selected</button>
+                  <button type="button" id="urlSaveNewBtn" class="btn-secondary">Save as new workbook</button>
+                </div>
+                <p id="urlSaveFeedback" class="save-scope-hint muted hidden" role="status"></p>
+              </div>
+            </section>
+          </main>
+        </div>
       </div>
     </div>
 
@@ -298,5 +410,6 @@
     </div>
 
     <script src="/static/app.js?v=20260517b"></script>
+    <script src="/static/urls.js?v=20260613a"></script>
   </body>
 </html>
