@@ -2,6 +2,9 @@
 
 import json
 import os
+from pathlib import Path
+
+_PROJECT_ROOT = Path(__file__).resolve().parent
 
 # Optional explicit Gemini model override.
 # Leave empty to auto-discover an available model at runtime.
@@ -201,6 +204,14 @@ APIFY_TIMEOUT_S = _env_int("APIFY_TIMEOUT_S", 120, minimum=10)
 SKIP_PRIVATE_ACCOUNTS = _env_bool("SKIP_PRIVATE_ACCOUNTS", True)
 APIFY_DEMO_FALLBACK = _env_bool("APIFY_DEMO_FALLBACK", True)
 
+PROFILE_CACHE_ENABLED = _env_bool("PROFILE_CACHE_ENABLED", True)
+PROFILE_CACHE_DAYS = _env_int("PROFILE_CACHE_DAYS", 30, minimum=1)
+_profile_cache_raw = (os.getenv("PROFILE_CACHE_PATH") or "data/profile_cache.db").strip()
+PROFILE_CACHE_PATH = str(
+    Path(_profile_cache_raw) if Path(_profile_cache_raw).is_absolute()
+    else (_PROJECT_ROOT / _profile_cache_raw)
+)
+
 
 def url_pipeline_settings() -> dict[str, object]:
     """Snapshot of pipeline settings (no secrets) for diagnostics / logging."""
@@ -216,6 +227,9 @@ def url_pipeline_settings() -> dict[str, object]:
         "apify_timeout_s": APIFY_TIMEOUT_S,
         "skip_private_accounts": SKIP_PRIVATE_ACCOUNTS,
         "apify_demo_fallback": APIFY_DEMO_FALLBACK,
+        "profile_cache_enabled": PROFILE_CACHE_ENABLED,
+        "profile_cache_days": PROFILE_CACHE_DAYS,
+        "profile_cache_path": PROFILE_CACHE_PATH,
     }
 
 

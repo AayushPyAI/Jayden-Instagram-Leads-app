@@ -18,6 +18,8 @@ __pycache__/
 *.log
 .cache/
 .pm2/
+data/profile_cache.db
+data/
 
 # Client lead data (local copies; production uses S3)
 Feedback/

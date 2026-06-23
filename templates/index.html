@@ -261,8 +261,8 @@
               <h1>URL Lead Pipeline</h1>
               <p>
                 Paste Instagram profile URLs. The app pulls each profile's followers, keeps only business
-                accounts that have a phone number and no website link, drops anyone already in your MASTER
-                workbooks, and returns ready-to-call leads.
+                accounts that have a phone number and no website link, and returns ready-to-call leads.
+                Optionally compare against ticked MASTER workbooks to flag duplicates.
               </p>
             </header>
 
@@ -273,8 +273,8 @@
                 <label for="urlDupCheckList">Duplicate check workbooks</label>
                 <div id="urlDupCheckList" class="url-checkbox-list"></div>
                 <p class="muted field-hint">
-                  New leads are compared against the ticked MASTER workbooks so the same business is never
-                  contacted twice. All are used by default.
+                  Tick one or more MASTER workbooks to compare new leads and flag duplicates. If none are
+                  ticked, no workbook duplicate check is performed.
                 </p>
               </div>
 
@@ -317,6 +317,8 @@
                 <div class="stat"><span>New</span><strong id="urlNewCount">0</strong></div>
                 <div class="stat"><span>Duplicates</span><strong id="urlDupCount">0</strong></div>
                 <div class="stat"><span>Checked</span><strong id="urlCheckedCount">0</strong></div>
+                <div class="stat"><span>From cache</span><strong id="urlCachedCount">0</strong></div>
+                <div class="stat"><span>API calls</span><strong id="urlFetchedCount">0</strong></div>
                 <div class="stat"><span>Followers</span><strong id="urlFollowerCount">0</strong></div>
               </div>
 
@@ -410,6 +412,6 @@
     </div>
 
     <script src="/static/app.js?v=20260517b"></script>
-    <script src="/static/urls.js?v=20260613a"></script>
+    <script src="/static/urls.js?v=20260623b"></script>
   </body>
 </html>

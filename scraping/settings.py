@@ -27,6 +27,9 @@ class PipelineSettings:
     apify_timeout_s: int
     skip_private_accounts: bool
     apify_demo_fallback: bool
+    profile_cache_enabled: bool
+    profile_cache_days: int
+    profile_cache_path: str
 
     @property
     def enabled(self) -> bool:
@@ -75,4 +78,7 @@ def load_settings() -> PipelineSettings:
         apify_timeout_s=config.APIFY_TIMEOUT_S,
         skip_private_accounts=config.SKIP_PRIVATE_ACCOUNTS,
         apify_demo_fallback=config.APIFY_DEMO_FALLBACK,
+        profile_cache_enabled=config.PROFILE_CACHE_ENABLED,
+        profile_cache_days=config.PROFILE_CACHE_DAYS,
+        profile_cache_path=config.PROFILE_CACHE_PATH,
     )

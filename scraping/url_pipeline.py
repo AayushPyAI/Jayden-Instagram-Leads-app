@@ -33,6 +33,7 @@ from scraping.profile_filter import (
     evaluate_profile,
     unwrap_user,
 )
+from scraping.profile_cache import ProfileCache, get_profile_cache
 from scraping.rapidapi_client import fetch_profile
 from scraping.settings import PipelineSettings, load_settings
 
@@ -93,6 +94,8 @@ class PipelineStats:
     followers_found: int = 0
     candidates: int = 0
     profiles_checked: int = 0
+    profiles_fetched: int = 0
+    profiles_cached: int = 0
     kept: int = 0
     new_leads: int = 0
     duplicate_leads: int = 0
@@ -262,9 +265,18 @@ def run_pipeline(
     kept: list[dict[str, Any]] = []
     total = len(candidates)
     lock = threading.Lock()
+    cache: ProfileCache | None = get_profile_cache(
+        settings.profile_cache_path,
+        max_age_days=settings.profile_cache_days,
+        enabled=settings.profile_cache_enabled,
+    )
 
-    def check_one(username: str, source: str) -> tuple[dict[str, Any], str]:
-        return fetch_profile(username, settings=settings), source
+    def check_one(username: str, source: str) -> tuple[dict[str, Any], str, bool]:
+        if cache:
+            hit = cache.get(username)
+            if hit is not None:
+                return hit["profile_json"], source, True
+        return fetch_profile(username, settings=settings), source, False
 
     if total:
         emit("profiles", f"Checking {total} profiles", 0, total)
@@ -280,7 +292,7 @@ def run_pipeline(
                 username = futures[fut]
                 done += 1
                 try:
-                    payload, source = fut.result()
+                    payload, source, from_cache = fut.result()
                 except ScrapingError as exc:
                     with lock:
                         stats.errors += 1
@@ -297,11 +309,23 @@ def run_pipeline(
                 verdict = evaluate_profile(payload, skip_private=settings.skip_private_accounts)
                 with lock:
                     stats.profiles_checked += 1
+                    if from_cache:
+                        stats.profiles_cached += 1
+                    else:
+                        stats.profiles_fetched += 1
                     _tally_reason(stats, verdict.reason)
                     if verdict.keep:
                         user = unwrap_user(payload) or {}
                         kept.append(extract_lead(user, source_url=source))
                         stats.kept += 1
+                    if cache is not None and not from_cache:
+                        cache.put(
+                            username,
+                            payload,
+                            filter_reason=verdict.reason,
+                            kept=verdict.keep,
+                            source_url=source,
+                        )
                 if done % 10 == 0 or done == total:
                     emit("profiles", f"Checked {done}/{total} profiles", done, total)
 

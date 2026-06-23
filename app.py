@@ -343,7 +343,8 @@ async def codebase_xlsx_upload(
 
 def _parse_master_workbook_names(raw: str) -> list[str] | None:
     """
-    None => use every .xlsx in the MASTER folder.
+    None => use every .xlsx in the MASTER folder (screenshot flow sends JSON null).
+    [] => no workbook duplicate check (URL pipeline when nothing is ticked).
     Non-empty list => only those filenames (validated when loading bytes).
     """
     s = (raw or "").strip()
@@ -359,7 +360,7 @@ def _parse_master_workbook_names(raw: str) -> list[str] | None:
         raise HTTPException(status_code=400, detail="duplicate_workbooks must be a JSON array of filenames.")
     names = [str(x).strip() for x in data if str(x).strip()]
     if not names:
-        return None
+        return []
     return names
 
 

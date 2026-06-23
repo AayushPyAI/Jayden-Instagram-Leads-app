@@ -17,6 +17,8 @@
   const newCountEl = document.getElementById("urlNewCount");
   const dupCountEl = document.getElementById("urlDupCount");
   const checkedCountEl = document.getElementById("urlCheckedCount");
+  const cachedCountEl = document.getElementById("urlCachedCount");
+  const fetchedCountEl = document.getElementById("urlFetchedCount");
   const followerCountEl = document.getElementById("urlFollowerCount");
 
   const copyNewBtn = document.getElementById("urlCopyNewBtn");
@@ -99,7 +101,7 @@
         const cb = document.createElement("input");
         cb.type = "checkbox";
         cb.value = name;
-        cb.checked = true;
+        cb.checked = false;
         cb.className = "url-dup-cb";
         label.appendChild(cb);
         const span = document.createElement("span");
@@ -129,9 +131,7 @@
 
   function selectedDuplicateWorkbooks() {
     const boxes = [...dupCheckList.querySelectorAll(".url-dup-cb")];
-    if (!boxes.length) return "";
     const checked = boxes.filter((b) => b.checked).map((b) => b.value);
-    if (checked.length === 0 || checked.length === boxes.length) return "";
     return JSON.stringify(checked);
   }
 
@@ -178,10 +178,14 @@
     newCountEl.textContent = String(newCount);
     dupCountEl.textContent = String(dupCount);
     checkedCountEl.textContent = String(stats.profiles_checked || 0);
+    if (cachedCountEl) cachedCountEl.textContent = String(stats.profiles_cached || 0);
+    if (fetchedCountEl) fetchedCountEl.textContent = String(stats.profiles_fetched || 0);
     followerCountEl.textContent = String(stats.followers_found || 0);
 
     const bits = [];
     bits.push(`${rows.length} lead(s) from ${stats.profiles_checked || 0} profiles checked`);
+    if (stats.profiles_cached) bits.push(`${stats.profiles_cached} from cache`);
+    if (stats.profiles_fetched) bits.push(`${stats.profiles_fetched} API call(s)`);
     if (stats.skipped_not_business) bits.push(`${stats.skipped_not_business} not business`);
     if (stats.skipped_has_link) bits.push(`${stats.skipped_has_link} had a link`);
     if (stats.skipped_no_phone) bits.push(`${stats.skipped_no_phone} no phone`);
