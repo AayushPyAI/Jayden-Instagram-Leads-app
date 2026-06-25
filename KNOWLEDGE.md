@@ -61,6 +61,17 @@ Three logical folders (IDs configurable via env in `config.py`):
 
 ## Feature Log
 
+### 2026-06-22 — Remove URL Pipeline “Save as new workbook”
+
+- **Summary:** Dropped the secondary save action on the URL Pipeline page; users
+  append new leads to a selected MASTER workbook only.
+- **Changes made:**
+  - `templates/index.html` — removed `#urlSaveNewBtn`
+  - `static/urls.js` — removed `saveAsNew()` and `/api/save-pending-new` call
+- **Scope changes:** URL tab no longer exports to NEW folder; AI Processing save
+  options unchanged (`/api/save-pending-new` kept for screenshot flow).
+- **Implementation notes:** Copy-leads and “Append to selected” remain on URL tab.
+
 ### 2026-06-22 — URL pipeline streaming (memory)
 
 - **Summary:** Refactored URL pipeline to avoid holding all followers and all

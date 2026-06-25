@@ -28,7 +28,6 @@
 
   const saveTarget = document.getElementById("urlSaveTarget");
   const saveExistingBtn = document.getElementById("urlSaveExistingBtn");
-  const saveNewBtn = document.getElementById("urlSaveNewBtn");
   const saveFeedback = document.getElementById("urlSaveFeedback");
 
   if (!seedInput || !runBtn) return;
@@ -385,49 +384,12 @@
     }
   }
 
-  async function saveAsNew() {
-    if (!currentToken) {
-      flash(saveFeedback, "Run the pipeline first.", false);
-      return;
-    }
-    const name = window.prompt("Name for the new workbook (saved to NEW folder):", "url_leads");
-    if (name === null) return;
-    const clean = name.trim();
-    if (!clean) {
-      flash(saveFeedback, "Enter a name for the workbook.", false);
-      return;
-    }
-    const form = new FormData();
-    form.append("token", currentToken);
-    form.append("save_scope", "new");
-    form.append("export_name", clean);
-    const dup = selectedDuplicateWorkbooks();
-    if (dup) form.append("duplicate_workbooks", dup);
-
-    saveNewBtn.disabled = true;
-    try {
-      const res = await fetch("/api/save-pending-new", { method: "POST", body: form });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        flash(saveFeedback, apiDetail(data, "Save failed."), false);
-        return;
-      }
-      flash(saveFeedback, data.message || "Saved.", true);
-      currentToken = null;
-    } catch (err) {
-      flash(saveFeedback, "Could not save the workbook.", false);
-    } finally {
-      saveNewBtn.disabled = false;
-    }
-  }
-
   runBtn.addEventListener("click", startRun);
   cancelBtn.addEventListener("click", cancelRun);
   copyNewBtn.addEventListener("click", () => copyLeads("new"));
   if (copyDupBtn) copyDupBtn.addEventListener("click", () => copyLeads("dup"));
   copyAllBtn.addEventListener("click", () => copyLeads("all"));
   saveExistingBtn.addEventListener("click", saveToExisting);
-  saveNewBtn.addEventListener("click", saveAsNew);
 
   document.addEventListener("urls:show", async () => {
     await loadStatus();
