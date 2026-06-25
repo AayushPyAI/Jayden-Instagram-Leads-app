@@ -1,7 +1,7 @@
 """Turn Instagram seed handles into deduplicated call-list leads.
 
-seed handles -> Apify followers -> RapidAPI profile detail
-            -> filter (business, no link, has phone) -> dedupe -> leads
+Per seed URL: Apify followers -> RapidAPI profile detail (bounded pool) -> filter
+-> accumulate kept leads; then MASTER dedupe. Follower lists are not merged in RAM.
 """
 
 from __future__ import annotations
@@ -190,41 +190,39 @@ def _classify_against_master(
     return annotated
 
 
-def _collect_candidates(
-    seed_handles: list[str],
+def _process_profile_result(
+    username: str,
+    payload: dict[str, Any],
+    source: str,
+    from_cache: bool,
     *,
     settings: PipelineSettings,
+    stats: PipelineStats,
     result: PipelineResult,
-    emit: ProgressFn,
-    cancelled: CancelFn,
-) -> list[tuple[str, str]]:
-    """Return unique (username, source_url) candidates across all seeds."""
-    candidates: dict[str, str] = {}
-    names: dict[str, str] = {}
-    total = len(seed_handles)
-    with httpx.Client(timeout=settings.apify_timeout_s) as apify_http:
-        for i, seed in enumerate(seed_handles, start=1):
-            if cancelled():
-                break
-            emit("followers", f"Fetching followers for @{seed}", i - 1, total)
-            try:
-                items = fetch_followers(seed, settings=settings, client=apify_http)
-            except ScrapingError as exc:
-                result.stats.errors += 1
-                result.errors.append(str(exc))
-                continue
-            usernames = follower_usernames(
-                items, seed_handle=seed, skip_private=settings.skip_private_accounts
+    kept: list[dict[str, Any]],
+    cache: ProfileCache | None,
+    lock: threading.Lock,
+) -> None:
+    verdict = evaluate_profile(payload, skip_private=settings.skip_private_accounts)
+    with lock:
+        stats.profiles_checked += 1
+        if from_cache:
+            stats.profiles_cached += 1
+        else:
+            stats.profiles_fetched += 1
+        _tally_reason(stats, verdict.reason)
+        if verdict.keep:
+            user = unwrap_user(payload) or {}
+            kept.append(extract_lead(user, source_url=source))
+            stats.kept += 1
+        if cache is not None and not from_cache:
+            cache.put(
+                username,
+                payload,
+                filter_reason=verdict.reason,
+                kept=verdict.keep,
+                source_url=source,
             )
-            result.stats.followers_found += len(usernames)
-            source = f"https://www.instagram.com/{seed}/"
-            for username in usernames:
-                low = username.lower()
-                if low not in candidates:
-                    candidates[low] = source
-                    names[low] = username
-    emit("followers", "Followers collected", total, total)
-    return [(names[low], candidates[low]) for low in names]
 
 
 def run_pipeline(
@@ -250,26 +248,18 @@ def run_pipeline(
     def cancelled() -> bool:
         return bool(should_cancel and should_cancel())
 
-    candidates = _collect_candidates(
-        seed_handles, settings=settings, result=result, emit=emit, cancelled=cancelled
-    )
-    stats.candidates = len(candidates)
-    if cancelled():
-        return result
-
     cap = settings.rapidapi_daily_call_cap
-    if len(candidates) > cap:
-        candidates = candidates[:cap]
-        stats.capped = True
-
     kept: list[dict[str, Any]] = []
-    total = len(candidates)
+    seen_global: set[str] = set()
     lock = threading.Lock()
     cache: ProfileCache | None = get_profile_cache(
         settings.profile_cache_path,
         max_age_days=settings.profile_cache_days,
         enabled=settings.profile_cache_enabled,
     )
+    seed_total = len(seed_handles)
+    profile_done = 0
+    profile_target = 0
 
     def check_one(username: str, source: str) -> tuple[dict[str, Any], str, bool]:
         if cache:
@@ -278,59 +268,100 @@ def run_pipeline(
                 return hit["profile_json"], source, True
         return fetch_profile(username, settings=settings), source, False
 
-    if total:
-        emit("profiles", f"Checking {total} profiles", 0, total)
-        with ThreadPoolExecutor(max_workers=max(1, settings.concurrency)) as pool:
-            futures = {
-                pool.submit(check_one, username, source): username
-                for username, source in candidates
-            }
-            done = 0
-            for fut in as_completed(futures):
+    with httpx.Client(timeout=settings.apify_timeout_s) as apify_http:
+        for i, seed in enumerate(seed_handles, start=1):
+            if cancelled():
+                break
+            emit("followers", f"Fetching followers for @{seed}", i - 1, seed_total)
+            try:
+                items = fetch_followers(seed, settings=settings, client=apify_http)
+            except ScrapingError as exc:
+                stats.errors += 1
+                result.errors.append(str(exc))
+                continue
+
+            usernames = follower_usernames(
+                items, seed_handle=seed, skip_private=settings.skip_private_accounts
+            )
+            stats.followers_found += len(usernames)
+            source_url = f"https://www.instagram.com/{seed}/"
+
+            batch: list[tuple[str, str]] = []
+            for username in usernames:
                 if cancelled():
                     break
-                username = futures[fut]
-                done += 1
-                try:
-                    payload, source, from_cache = fut.result()
-                except ScrapingError as exc:
-                    with lock:
-                        stats.errors += 1
-                        if len(result.errors) < 50:
-                            result.errors.append(str(exc))
+                low = username.lower()
+                if low in seen_global:
                     continue
-                except Exception as exc:
-                    with lock:
-                        stats.errors += 1
-                        if len(result.errors) < 50:
-                            result.errors.append(f"@{username}: {exc}")
-                    continue
+                if stats.candidates >= cap:
+                    stats.capped = True
+                    break
+                seen_global.add(low)
+                stats.candidates += 1
+                batch.append((username, source_url))
 
-                verdict = evaluate_profile(payload, skip_private=settings.skip_private_accounts)
-                with lock:
-                    stats.profiles_checked += 1
-                    if from_cache:
-                        stats.profiles_cached += 1
-                    else:
-                        stats.profiles_fetched += 1
-                    _tally_reason(stats, verdict.reason)
-                    if verdict.keep:
-                        user = unwrap_user(payload) or {}
-                        kept.append(extract_lead(user, source_url=source))
-                        stats.kept += 1
-                    if cache is not None and not from_cache:
-                        cache.put(
+            if batch:
+                profile_target += len(batch)
+                emit(
+                    "profiles",
+                    f"Checking profiles for @{seed}",
+                    profile_done,
+                    profile_target,
+                )
+                with ThreadPoolExecutor(max_workers=max(1, settings.concurrency)) as pool:
+                    futures = {
+                        pool.submit(check_one, username, src): username
+                        for username, src in batch
+                    }
+                    for fut in as_completed(futures):
+                        if cancelled():
+                            break
+                        username = futures[fut]
+                        profile_done += 1
+                        try:
+                            payload, src, from_cache = fut.result()
+                        except ScrapingError as exc:
+                            with lock:
+                                stats.errors += 1
+                                if len(result.errors) < 50:
+                                    result.errors.append(str(exc))
+                            continue
+                        except Exception as exc:
+                            with lock:
+                                stats.errors += 1
+                                if len(result.errors) < 50:
+                                    result.errors.append(f"@{username}: {exc}")
+                            continue
+
+                        _process_profile_result(
                             username,
                             payload,
-                            filter_reason=verdict.reason,
-                            kept=verdict.keep,
-                            source_url=source,
+                            src,
+                            from_cache,
+                            settings=settings,
+                            stats=stats,
+                            result=result,
+                            kept=kept,
+                            cache=cache,
+                            lock=lock,
                         )
-                if done % 10 == 0 or done == total:
-                    emit("profiles", f"Checked {done}/{total} profiles", done, total)
+                        if profile_done % 10 == 0 or profile_done == profile_target:
+                            emit(
+                                "profiles",
+                                f"Checked {profile_done}/{profile_target} profiles",
+                                profile_done,
+                                profile_target,
+                            )
+
+    emit("followers", "Followers collected", seed_total, seed_total)
 
     result.leads = _classify_against_master(kept, master_sources)
     stats.new_leads = sum(1 for it in result.leads if it["status"] == "new")
     stats.duplicate_leads = sum(1 for it in result.leads if it["status"] != "new")
-    emit("done", "Pipeline complete", total, total)
+    emit(
+        "done",
+        "Pipeline complete",
+        profile_done,
+        max(profile_target, profile_done),
+    )
     return result

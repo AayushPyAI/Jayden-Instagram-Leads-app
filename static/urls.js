@@ -22,6 +22,7 @@
   const followerCountEl = document.getElementById("urlFollowerCount");
 
   const copyNewBtn = document.getElementById("urlCopyNewBtn");
+  const copyDupBtn = document.getElementById("urlCopyDupBtn");
   const copyAllBtn = document.getElementById("urlCopyAllBtn");
   const copyFeedback = document.getElementById("urlCopyFeedback");
 
@@ -195,6 +196,7 @@
     resultSummary.textContent = bits.join(" · ");
 
     copyNewBtn.disabled = newCount === 0;
+    if (copyDupBtn) copyDupBtn.disabled = dupCount === 0;
     copyAllBtn.disabled = rows.length === 0;
   }
 
@@ -302,6 +304,12 @@
     cancelBtn.disabled = false;
   }
 
+  function cellClipboardValue(row, key) {
+    const v = row[key];
+    if (v == null) return "";
+    return String(v).replace(/\r\n|\r|\n|\t/g, " ").trim();
+  }
+
   function leadsToTsv(rows) {
     const header = ["Business Name", "Mobile", "Email", "Instagram"].join("\t");
     const lines = rows.map((r) =>
@@ -312,16 +320,32 @@
     return [header, ...lines].join("\n");
   }
 
-  async function copyLeads(onlyNew) {
-    const rows = onlyNew ? currentRows.filter((r) => r.status === "new") : currentRows;
+  function leadsToIgPhoneTsv(rows) {
+    const lines = ["Instagram username\tPhone"];
+    for (const row of rows) {
+      lines.push(`${cellClipboardValue(row, "Instagram")}\t${cellClipboardValue(row, "Mobile")}`);
+    }
+    return lines.join("\n");
+  }
+
+  function rowsForCopy(filter) {
+    if (filter === "new") return currentRows.filter((r) => r.status === "new");
+    if (filter === "dup") return currentRows.filter((r) => r.status !== "new");
+    return currentRows;
+  }
+
+  async function copyLeads(filter) {
+    const rows = rowsForCopy(filter);
     if (!rows.length) {
       flash(copyFeedback, "Nothing to copy.", false);
       return;
     }
-    const text = leadsToTsv(rows);
+    const text = filter === "dup" ? leadsToIgPhoneTsv(rows) : leadsToTsv(rows);
     try {
       await navigator.clipboard.writeText(text);
-      flash(copyFeedback, `Copied ${rows.length} lead(s).`, true);
+      const label = filter === "new" ? "new" : filter === "dup" ? "duplicate" : "all";
+      const suffix = filter === "dup" ? " — Instagram + Phone." : ".";
+      flash(copyFeedback, `Copied ${rows.length} row(s) to clipboard (${label})${suffix}`, true);
     } catch (err) {
       flash(copyFeedback, "Copy failed — your browser blocked clipboard access.", false);
     }
@@ -399,8 +423,9 @@
 
   runBtn.addEventListener("click", startRun);
   cancelBtn.addEventListener("click", cancelRun);
-  copyNewBtn.addEventListener("click", () => copyLeads(true));
-  copyAllBtn.addEventListener("click", () => copyLeads(false));
+  copyNewBtn.addEventListener("click", () => copyLeads("new"));
+  if (copyDupBtn) copyDupBtn.addEventListener("click", () => copyLeads("dup"));
+  copyAllBtn.addEventListener("click", () => copyLeads("all"));
   saveExistingBtn.addEventListener("click", saveToExisting);
   saveNewBtn.addEventListener("click", saveAsNew);
 

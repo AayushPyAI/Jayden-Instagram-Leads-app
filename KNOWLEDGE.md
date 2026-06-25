@@ -36,9 +36,9 @@ Three logical folders (IDs configurable via env in `config.py`):
 
 1. **Screenshot path** — upload Instagram profile screenshots → Gemini extracts
    business name, phone, email, handle → duplicate check against MASTER → save.
-2. **URL pipeline path** — seed Instagram handles → Apify fetches followers →
-   RapidAPI enriches profiles → filter (business, no link, has phone) → dedupe
-   against MASTER → same save flow as screenshots.
+2. **URL pipeline path** — seed Instagram handles → per-URL Apify followers →
+   RapidAPI enriches profiles (bounded concurrency, no giant in-memory list) →
+   filter (business, no link, has phone) → dedupe against MASTER → same save flow.
 
 ## Key Decisions
 
@@ -53,7 +53,27 @@ Three logical folders (IDs configurable via env in `config.py`):
 - **Workbook storage is pluggable** — `get_workbook_storage()` picks S3 or local
   based on env; client data folders (`Feedback/`, `MASTER/`, etc.) are gitignored.
 
+- **URL pipeline memory** — processes one seed URL at a time: Apify list is
+  checked via a bounded thread pool, then discarded before the next seed. A small
+  `seen` set dedupes across URLs; env caps (`APIFY_MAX_FOLLOWERS_PER_URL`,
+  `RAPIDAPI_DAILY_CALL_CAP`, etc.) are unchanged. Apify still runs for all seeds
+  when the profile cap is hit (same as before).
+
 ## Feature Log
+
+### 2026-06-22 — URL pipeline streaming (memory)
+
+- **Summary:** Refactored URL pipeline to avoid holding all followers and all
+  profile tasks in memory at once.
+- **Changes made:**
+  - `scraping/url_pipeline.py` — per-seed Apify → profile check → discard;
+    removed `_collect_candidates` mega-list phase
+  - `KNOWLEDGE.md` — architecture note and feature log
+- **Scope changes:** None; same API calls, caps, filters, and UI behavior.
+- **Implementation notes:** `stats.candidates` still counts unique profiles
+  queued for check; `stats.capped` when unique total exceeds
+  `RAPIDAPI_DAILY_CALL_CAP`. Profile checking starts after each seed's Apify
+  response instead of after all seeds.
 
 ### 2026-06-15 — Knowledge base & Cursor auto-update rule
 
