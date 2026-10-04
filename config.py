@@ -195,11 +195,14 @@ RAPIDAPI_USERNAME_PARAM = (os.getenv("RAPIDAPI_USERNAME_PARAM") or "username").s
 
 URL_PIPELINE_MAX_SEED_URLS = _env_int("URL_PIPELINE_MAX_SEED_URLS", 20)
 APIFY_MAX_FOLLOWERS_PER_URL = _env_int("APIFY_MAX_FOLLOWERS_PER_URL", 400)
-URL_PIPELINE_CONCURRENCY = _env_int("URL_PIPELINE_CONCURRENCY", 5)
+# Keep concurrency low — RapidAPI plans throttle hard above ~3–4 parallel profile calls.
+URL_PIPELINE_CONCURRENCY = _env_int("URL_PIPELINE_CONCURRENCY", 3)
 RAPIDAPI_DAILY_CALL_CAP = _env_int("RAPIDAPI_DAILY_CALL_CAP", 8000)
 RAPIDAPI_TIMEOUT_S = _env_int("RAPIDAPI_TIMEOUT_S", 25, minimum=5)
-RAPIDAPI_MAX_RETRIES = _env_int("RAPIDAPI_MAX_RETRIES", 2)
-RAPIDAPI_RETRY_BACKOFF_S = _env_float("RAPIDAPI_RETRY_BACKOFF_S", 1.5, minimum=0.1)
+RAPIDAPI_MAX_RETRIES = _env_int("RAPIDAPI_MAX_RETRIES", 5)
+RAPIDAPI_RETRY_BACKOFF_S = _env_float("RAPIDAPI_RETRY_BACKOFF_S", 2.5, minimum=0.1)
+# Minimum gap between RapidAPI calls across all worker threads (seconds).
+RAPIDAPI_MIN_INTERVAL_S = _env_float("RAPIDAPI_MIN_INTERVAL_S", 0.35, minimum=0.0)
 APIFY_TIMEOUT_S = _env_int("APIFY_TIMEOUT_S", 120, minimum=10)
 SKIP_PRIVATE_ACCOUNTS = _env_bool("SKIP_PRIVATE_ACCOUNTS", True)
 APIFY_DEMO_FALLBACK = _env_bool("APIFY_DEMO_FALLBACK", True)
@@ -224,6 +227,8 @@ def url_pipeline_settings() -> dict[str, object]:
         "rapidapi_daily_call_cap": RAPIDAPI_DAILY_CALL_CAP,
         "rapidapi_timeout_s": RAPIDAPI_TIMEOUT_S,
         "rapidapi_max_retries": RAPIDAPI_MAX_RETRIES,
+        "rapidapi_retry_backoff_s": RAPIDAPI_RETRY_BACKOFF_S,
+        "rapidapi_min_interval_s": RAPIDAPI_MIN_INTERVAL_S,
         "apify_timeout_s": APIFY_TIMEOUT_S,
         "skip_private_accounts": SKIP_PRIVATE_ACCOUNTS,
         "apify_demo_fallback": APIFY_DEMO_FALLBACK,

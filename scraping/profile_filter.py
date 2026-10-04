@@ -30,8 +30,12 @@ def unwrap_user(payload: dict[str, Any]) -> dict[str, Any] | None:
     """Return the user dict from a full RapidAPI response or an unwrapped one."""
     if not isinstance(payload, dict):
         return None
-    if "username" in payload and "result" not in payload:
+    if "username" in payload and "result" not in payload and "data" not in payload:
         return payload
+    # Instagram Scraper 2025 wraps the profile under {"data": {...}}
+    data = payload.get("data")
+    if isinstance(data, dict) and ("username" in data or "pk" in data or "id" in data):
+        return data
     result = payload.get("result")
     if isinstance(result, list) and result:
         first = result[0]

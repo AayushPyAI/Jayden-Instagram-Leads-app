@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import random
+import threading
 import time
 from typing import Any
 
@@ -12,6 +14,10 @@ from scraping.apify_client import ScrapingError
 from scraping.settings import PipelineSettings
 
 logger = logging.getLogger("app")
+
+# Process-wide spacing so ThreadPool workers do not stampede RapidAPI.
+_rate_lock = threading.Lock()
+_next_allowed = 0.0
 
 
 def _headers(settings: PipelineSettings) -> dict[str, str]:
@@ -24,6 +30,30 @@ def _headers(settings: PipelineSettings) -> dict[str, str]:
 
 def _endpoint(settings: PipelineSettings) -> str:
     return f"https://{settings.rapidapi_host}/{settings.rapidapi_profile_path}"
+
+
+def _throttle(min_interval_s: float) -> None:
+    """Enforce a minimum gap between RapidAPI calls across all threads."""
+    global _next_allowed
+    if min_interval_s <= 0:
+        return
+    with _rate_lock:
+        now = time.monotonic()
+        wait = _next_allowed - now
+        if wait > 0:
+            time.sleep(wait)
+            now = time.monotonic()
+        _next_allowed = now + min_interval_s
+
+
+def _retry_after_seconds(resp: httpx.Response, fallback: float) -> float:
+    raw = (resp.headers.get("Retry-After") or "").strip()
+    if not raw:
+        return fallback
+    try:
+        return max(fallback, float(raw))
+    except ValueError:
+        return fallback
 
 
 def fetch_profile(
@@ -41,6 +71,9 @@ def fetch_profile(
     method = settings.rapidapi_profile_method or "POST"
     param = settings.rapidapi_username_param or "username"
     attempts = max(1, settings.rapidapi_max_retries)
+    min_interval = float(getattr(settings, "rapidapi_min_interval_s", 0.35) or 0.0)
+
+    global _next_allowed
 
     owns_client = client is None
     if owns_client:
@@ -49,6 +82,7 @@ def fetch_profile(
     try:
         for attempt in range(1, attempts + 1):
             try:
+                _throttle(min_interval)
                 if method == "GET":
                     resp = client.get(url, headers=_headers(settings), params={param: clean})
                 else:
@@ -57,13 +91,36 @@ def fetch_profile(
                     )
             except httpx.HTTPError as exc:
                 last_error = str(exc)
-                time.sleep(settings.rapidapi_retry_backoff_s * attempt)
+                delay = settings.rapidapi_retry_backoff_s * (2 ** (attempt - 1))
+                delay += random.uniform(0, 0.5)
+                time.sleep(delay)
                 continue
 
-            if resp.status_code == 429 or resp.status_code >= 500:
-                last_error = f"HTTP {resp.status_code}"
-                time.sleep(settings.rapidapi_retry_backoff_s * attempt)
+            if resp.status_code == 429:
+                last_error = "HTTP 429"
+                base = settings.rapidapi_retry_backoff_s * (2 ** (attempt - 1))
+                delay = _retry_after_seconds(resp, base)
+                delay = max(delay, 3.0) + random.uniform(0, 1.0)
+                logger.warning(
+                    "RapidAPI 429 for @%s (attempt %s/%s); sleeping %.1fs",
+                    clean,
+                    attempt,
+                    attempts,
+                    delay,
+                )
+                # Push the global throttle out so other workers also back off.
+                with _rate_lock:
+                    _next_allowed = max(_next_allowed, time.monotonic() + delay * 0.5)
+                time.sleep(delay)
                 continue
+
+            if resp.status_code >= 500:
+                last_error = f"HTTP {resp.status_code}"
+                delay = settings.rapidapi_retry_backoff_s * (2 ** (attempt - 1))
+                delay += random.uniform(0, 0.5)
+                time.sleep(delay)
+                continue
+
             if resp.status_code >= 400:
                 raise ScrapingError(
                     f"RapidAPI HTTP {resp.status_code} for @{clean}: {resp.text[:200]}"

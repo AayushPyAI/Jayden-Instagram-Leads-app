@@ -60,7 +60,13 @@ def fetch_followers(
     results_limit: int | None = None,
     client: httpx.Client | None = None,
 ) -> list[dict[str, Any]]:
-    """Run the actor synchronously and return its dataset items for one handle."""
+    """Start the actor, wait for finish, then return dataset items for one handle.
+
+    Uses async run + poll instead of run-sync-get-dataset-items, which is less
+    reliable (frequent 502 / gateway timeouts on longer follower scrapes).
+    """
+    import time
+
     clean = (handle or "").strip().lstrip("@")
     if not clean:
         raise ScrapingError("Empty seed handle.")
@@ -72,28 +78,66 @@ def fetch_followers(
         "resultsLimit": limit,
         "getFollowings": False,
     }
-    url = _run_sync_url(settings.apify_actor_id)
     headers = _auth_headers(settings.apify_token)
+    start_url = f"{_APIFY_BASE}/acts/{settings.apify_actor_id}/runs"
 
     owns_client = client is None
     if owns_client:
-        client = httpx.Client(timeout=settings.apify_timeout_s, headers=headers)
+        client = httpx.Client(timeout=max(60, settings.apify_timeout_s), headers=headers)
     try:
-        resp = client.post(url, json=payload, headers=headers)
+        resp = client.post(start_url, json=payload, headers=headers)
+        if resp.status_code >= 400:
+            raise ScrapingError(
+                f"Apify start failed HTTP {resp.status_code} for @{clean}: {resp.text[:300]}"
+            )
+        try:
+            run = resp.json().get("data") or {}
+        except ValueError as exc:
+            raise ScrapingError(f"Apify start returned non-JSON for @{clean}.") from exc
+        run_id = run.get("id")
+        if not run_id:
+            raise ScrapingError(f"Apify start missing run id for @{clean}.")
+
+        deadline = time.monotonic() + max(30, settings.apify_timeout_s)
+        status = run.get("status") or "READY"
+        dataset_id = run.get("defaultDatasetId")
+        while status in ("READY", "RUNNING"):
+            if time.monotonic() > deadline:
+                raise ScrapingError(f"Apify timed out waiting for @{clean} (run {run_id}).")
+            time.sleep(3)
+            poll = client.get(f"{_APIFY_BASE}/actor-runs/{run_id}", headers=headers)
+            if poll.status_code >= 400:
+                raise ScrapingError(
+                    f"Apify poll HTTP {poll.status_code} for @{clean}: {poll.text[:200]}"
+                )
+            pdata = poll.json().get("data") or {}
+            status = pdata.get("status") or status
+            dataset_id = pdata.get("defaultDatasetId") or dataset_id
+            if status in ("FAILED", "ABORTED", "TIMED-OUT"):
+                msg = pdata.get("statusMessage") or status
+                raise ScrapingError(f"Apify run {status} for @{clean}: {msg}")
+
+        if status != "SUCCEEDED" or not dataset_id:
+            raise ScrapingError(f"Apify finished without dataset for @{clean} (status={status}).")
+
+        items_resp = client.get(
+            f"{_APIFY_BASE}/datasets/{dataset_id}/items",
+            headers=headers,
+            params={"limit": limit},
+        )
+        if items_resp.status_code >= 400:
+            raise ScrapingError(
+                f"Apify dataset HTTP {items_resp.status_code} for @{clean}: {items_resp.text[:300]}"
+            )
+        try:
+            data = items_resp.json()
+        except ValueError as exc:
+            raise ScrapingError(f"Apify dataset non-JSON for @{clean}.") from exc
     except httpx.HTTPError as exc:
         raise ScrapingError(f"Apify request failed for @{clean}: {exc}") from exc
     finally:
         if owns_client:
             client.close()
-
-    if resp.status_code >= 400:
-        raise ScrapingError(
-            f"Apify returned HTTP {resp.status_code} for @{clean}: {resp.text[:300]}"
-        )
-    try:
-        data = resp.json()
-    except ValueError as exc:
-        raise ScrapingError(f"Apify returned non-JSON for @{clean}.") from exc
 
     if not isinstance(data, list):
         raise ScrapingError("Unexpected Apify response shape (expected a list of items).")

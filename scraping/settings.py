@@ -24,6 +24,7 @@ class PipelineSettings:
     rapidapi_timeout_s: int
     rapidapi_max_retries: int
     rapidapi_retry_backoff_s: float
+    rapidapi_min_interval_s: float
     apify_timeout_s: int
     skip_private_accounts: bool
     apify_demo_fallback: bool
@@ -75,6 +76,7 @@ def load_settings() -> PipelineSettings:
         rapidapi_timeout_s=config.RAPIDAPI_TIMEOUT_S,
         rapidapi_max_retries=config.RAPIDAPI_MAX_RETRIES,
         rapidapi_retry_backoff_s=config.RAPIDAPI_RETRY_BACKOFF_S,
+        rapidapi_min_interval_s=config.RAPIDAPI_MIN_INTERVAL_S,
         apify_timeout_s=config.APIFY_TIMEOUT_S,
         skip_private_accounts=config.SKIP_PRIVATE_ACCOUNTS,
         apify_demo_fallback=config.APIFY_DEMO_FALLBACK,
